@@ -1,0 +1,92 @@
+import cv2
+import os
+import numpy as np
+
+# 输入文件夹路径
+input_folder1 = r'C:\Users\testrobot1\Desktop\realsense_library_custom-main\segmentation_models.pytorch-master\data\RGB_photo\rgb'
+input_folder2 = r'C:\Users\testrobot1\Desktop\realsense_library_custom-main\segmentation_models.pytorch-master\data\RGB_photo\depth'
+input_folder3 = r'C:\Users\testrobot1\Desktop\realsense_library_custom-main\segmentation_models.pytorch-master\data\RGB_photo\5'
+
+# 输出视频文件路径
+output_video = r'C:\Users\testrobot1\Desktop\realsense_library_custom-main\segmentation_models.pytorch-master\data\RGB_video\1.mp4'
+
+# 获取输入文件夹中的所有jpg文件
+jpg_files1 = [f for f in os.listdir(input_folder1) if f.endswith('.jpg')]
+jpg_files2 = [f for f in os.listdir(input_folder2) if f.endswith('.jpg')]
+jpg_files3 = [f for f in os.listdir(input_folder3) if f.endswith('.jpg')]
+
+# 排序文件列表确保按顺序合成视频
+jpg_files1.sort()
+jpg_files2.sort()
+jpg_files3.sort()
+
+# 获取第一个jpg文件的尺寸
+first_img1 = cv2.imread(os.path.join(input_folder1, jpg_files1[0]))
+first_img2 = cv2.imread(os.path.join(input_folder2, jpg_files2[0]))
+first_img3 = cv2.imread(os.path.join(input_folder3, jpg_files3[0]))
+height, width, _ = first_img1.shape
+
+# 设置新的宽度
+new_width = int(width * 0.6)  # 将原始宽度缩小为原来的80%
+
+# 假设图例的高度是图像高度的一半
+legend_height = height
+
+# 创建一个空的图像作为图例，宽度为图像宽度的一半
+legend = np.zeros((legend_height, new_width // 2, 3), dtype=np.uint8)
+
+# 在图例上添加标签和颜色块
+legend_labels = ["floor", "roof", "wall", "door", "obstacle", "stairUp", "stairDown", "blur"]
+legend_colors = [(120, 160, 62), (180, 64, 64), (240, 224, 66), (44, 128, 68), (104, 32, 70), (164, 192, 72), (180, 64, 64), (28, 0, 76)]  # BGR
+legend_block_height = legend_height // len(legend_labels)
+for idx, (label_text, color) in enumerate(zip(legend_labels, legend_colors)):
+    color_block = np.zeros((legend_block_height, new_width // 2, 3), dtype=np.uint8)
+    color_block[:, :] = color
+    legend[idx * legend_block_height:(idx + 1) * legend_block_height, :, :] = color_block
+    cv2.putText(legend, label_text, (5, idx * legend_block_height + legend_block_height // 2),
+                cv2.FONT_HERSHEY_DUPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
+
+# 创建视频写入对象
+fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # 使用mp4v编解码器
+out = cv2.VideoWriter(output_video, fourcc, 3.0, (3 * new_width + new_width // 2, height))  # 设置帧率为3fps，宽度为三倍图像宽度加上图例宽度
+
+# 逐个读取jpg文件并写入视频
+for i in range(min(len(jpg_files1), len(jpg_files2), len(jpg_files3))):
+    img_path1 = os.path.join(input_folder1, jpg_files1[i])
+    img_path2 = os.path.join(input_folder2, jpg_files2[i])
+    img_path3 = os.path.join(input_folder3, jpg_files3[i])
+
+    img1 = cv2.imread(img_path1)
+    img2 = cv2.imread(img_path2)
+    img3 = cv2.imread(img_path3)
+
+    # 调整图像大小
+    img1_resized = cv2.resize(img1, (new_width, height))
+    img2_resized = cv2.resize(img2, (new_width, height))
+    img3_resized = cv2.resize(img3, (new_width, height))
+
+    # 将三张图像拼接到一张图上
+    combined_img = np.hstack([img1_resized, img2_resized, img3_resized])
+
+    # 在图像右侧添加图例
+    combined_img_with_legend = np.hstack((combined_img, legend))
+
+    # 写入视频
+    out.write(combined_img_with_legend)
+
+# 释放资源
+out.release()
+
+# 播放生成的视频
+cap = cv2.VideoCapture(output_video)
+while cap.isOpened():
+    ret, frame = cap.read()
+    if not ret:
+        break
+    cv2.imshow('Video', frame)
+    if cv2.waitKey(100) & 0xFF == ord('q'):  # 控制每帧显示时间为100毫秒
+        break
+
+# 清理
+cap.release()
+cv2.destroyAllWindows()
